@@ -1,15 +1,35 @@
-#define function "percentage"
+# define function "percentage"
 
 percentage = function(x, y, na.rm = TRUE) {
   x / y * 100
 }
 
-#Function to create empty plot when no data available
+# Function to show spinner when loading charts/tables
+# Parameter: whats_loading: 
+# e.g. plotlyOutput("multi_indicator_chart", height = "33em")
+
+loading <- function(whats_loading){
+  
+ withSpinner(whats_loading, type = 5, color = "#3F3685", size = 0.5)
+}
+
+# Function to read in data and split by indicator, remove redundant columns
+
+load_and_split_dataframe <- function(indicator) {
+  
+  data <- filter(runchart_dataframe, indicator == {{indicator}}) %>% 
+  janitor::remove_empty(., which = c("cols"), quiet = TRUE)
+  
+  return(data)
+}
+
+# Function to create empty plot when no data available
 # Parameters:
 # height_plot: height of the empty chart in pixels
 # text_nodata: What text will show when no data is available
 
 plot_nodata <- function(height_plot = 450, text_nodata) {
+  
   text_na <- list(align = "centre",
                   text = text_nodata,
                   xref = "x",
@@ -37,27 +57,38 @@ plot_nodata <- function(height_plot = 450, text_nodata) {
     config(displayModeBar = FALSE) # taking out plotly logo and collaborate button
 }
 
+# Function to create the small multiple charts with a blue median line
+# Parameters:
+# plotdata: dataframe with data to be plotted
+# measure: variable to be plotted as black dots/lines
+# hover: hovertext for the measure
+# centreline: variable to be plotted as a solid blue line
+# dottedline: variable to be plotted as a dotted blue line
+# yaxislabel: text to appear on y axis
+
+# This function is not as up-to-date as the next one as it was deemed not required
+
 creates_overview_charts_with_median <- function(plotdata,
-                                                measure = "MEASURE",
+                                                measure,
                                                 hover = "mytext",
-                                                centreline = "MEDIAN",
-                                                dottedline = "EXTENDED",
+                                                centreline = "median",
+                                                dottedline = "extended",
                                                 yaxislabel = yaxislabel){
   
-  y_max <- max(plotdata$MEASURE)
+  y_max <- max(plotdata$measure)
 
   xaxis_plots <- orig_xaxis_plots
-  xaxis_plots[["showticklabels"]] <- if_else(plotdata$HBNAME %in% island_names, TRUE, FALSE)
-  xaxis_plots[["dtick"]] <-  case_when(plotdata$PERIOD == "Q" ~ "2",
+  xaxis_plots[["showticklabels"]] <- if_else(plotdata$hbname %in% island_names, TRUE, FALSE)
+  xaxis_plots[["dtick"]] <-  case_when(plotdata$period == "Q" ~ "2",
                                        TRUE ~ "M6")
   yaxis_plots <- orig_yaxis_plots
   yaxis_plots[["range"]] <- list(-1.0, y_max * 1.05)
   
- 
+  # annotations - plots a single blue dot at 10 weeks on last data point for
+  # AVERAGE GESTATION AT BOOKING only
   
-  # annotations
   a <- list(
-    x = max(plotdata$DATE), 
+    x = max(plotdata$date), 
     y = 10,
     xanchor = 'left',
     yanchor = 'middle',
@@ -68,15 +99,15 @@ creates_overview_charts_with_median <- function(plotdata,
     showarrow = FALSE
   )
   
-  if(first(plotdata$INDICATOR) == "GESTATION AT BOOKING"){
+  if(first(plotdata$indicator) == "GESTATION AT BOOKING"){
     
     overview <- plotdata %>%
-      split(.$HBNAME2) %>% 
+      split(.$hbname2) %>% 
       lapply(
         function(d)
         plot_ly(
             d,
-            x = ~ DATE,
+            x = ~ date,
             y = ~ get(centreline), # solid blue line
             type = "scatter",
             mode = "lines",
@@ -96,7 +127,7 @@ creates_overview_charts_with_median <- function(plotdata,
             hovertext = ""
           ) %>%
           add_trace(
-            y = ~ get(measure),
+            y = ~ measure,
             type = "scatter",
             mode = "lines+markers",
             line = list(color = "black", # black lines
@@ -107,7 +138,7 @@ creates_overview_charts_with_median <- function(plotdata,
             hoverinfo = "text"
           ) %>%
           add_trace(
-            x = ~ max(plotdata$DATE), 
+            x = ~ max(plotdata$date), 
             y = 10,
             type = 'scatter',
             mode = "lines+markers", # dot for 10 weeks
@@ -117,7 +148,7 @@ creates_overview_charts_with_median <- function(plotdata,
             hovertext = ""
           ) %>%
             add_trace(
-            data = filter(gest_at_booking_small_multiples_data,!is.na(NEW_MEDIAN)),
+            data = filter(gest_at_booking_small_multiples_data,!is.na(new_median)),
             y = ~ NEW_MEDIAN, # green line (where applicable)
             type = "scatter",
             mode = "lines",
@@ -127,10 +158,10 @@ creates_overview_charts_with_median <- function(plotdata,
             ),
             marker = NULL,
             name = ~ paste0(case_when(
-              HBNAME == "NHS Tayside" ~
-                paste0(HBNAME, " average from Aug 2020 to end Dec 2020"),
-              HBNAME == "NHS Forth Valley" ~
-                paste0(HBNAME, " average from Mar 2021 to end Jun 2021"),
+              hbname == "NHS Tayside" ~
+                paste0(hbname, " average from Aug 2020 to end Dec 2020"),
+              hbname == "NHS Forth Valley" ~
+                paste0(hbname, " average from Mar 2021 to end Jun 2021"),
               TRUE ~ ""
             )
             ),
@@ -138,8 +169,8 @@ creates_overview_charts_with_median <- function(plotdata,
             hovertext = ""
             ) %>%
             add_trace(
-              data = filter(gest_at_booking_small_multiples_data,!is.na(NEW_EXTENDED)),
-              y = ~ NEW_EXTENDED, # dotted green line (where applicable)
+              data = filter(gest_at_booking_small_multiples_data,!is.na(new_extended)),
+              y = ~ new_extended, # dotted green line (where applicable)
               type = "scatter",
               mode = "lines",
               line = list(
@@ -149,10 +180,10 @@ creates_overview_charts_with_median <- function(plotdata,
               ),
               marker = NULL,
               name = ~ paste0(case_when(
-                HBNAME == "NHS Tayside" ~
-                  paste0(HBNAME, " projected average from Jan 2021"),
-                HBNAME == "NHS Forth Valley" ~
-                  paste0(HBNAME, " projected average from Jul 2021"),
+                hbname == "NHS Tayside" ~
+                  paste0(hbname, " projected average from Jan 2021"),
+                hbname == "NHS Forth Valley" ~
+                  paste0(hbname, " projected average from Jul 2021"),
                 TRUE ~ ""
               )
               ),
@@ -168,7 +199,7 @@ creates_overview_charts_with_median <- function(plotdata,
             annotations = list(
               x = 0.5,
               y = 1.0,
-              text = ~ unique(HBNAME2),
+              text = ~ unique(hbname2),
               xref = "paper",
               yref = "paper",
               xanchor = "center",
@@ -180,12 +211,12 @@ creates_overview_charts_with_median <- function(plotdata,
     
   } else {
     overview <- plotdata %>% 
-      split(.$HBNAME2) %>% 
+      split(.$hbname2) %>% 
       lapply(
         function(d)
           plot_ly(
             d,
-            x = ~ DATE,
+            x = ~ date,
             y = ~ get(centreline), # solid blue line
             type = "scatter",
             mode = "lines",
@@ -205,7 +236,7 @@ creates_overview_charts_with_median <- function(plotdata,
             hovertext = ""
           ) %>%
           add_trace(
-            y = ~ get(measure),
+            y = ~ measure,
             type = "scatter",
             mode = "lines+markers",
             line = list(color = "black", # black dots
@@ -223,7 +254,7 @@ creates_overview_charts_with_median <- function(plotdata,
             annotations = list(
               x = 0.5,
               y = 1.0,
-              text = ~ unique(HBNAME2),
+              text = ~ unique(hbname2),
               xref = "paper",
               yref = "paper",
               xanchor = "center",
@@ -257,28 +288,35 @@ creates_overview_charts_with_median <- function(plotdata,
   return(overview)
 }
 
+# Function to create the small multiple charts without a blue median line
+# Parameters:
+# plotdata: dataframe with data to be plotted
+# measure: variable to be plotted as black dots/lines
+# hover: hovertext for the measure
+# yaxislabel: text to appear on y axis
+
 creates_overview_charts_without_median <- function(plotdata,
-                                                   measure = "MEASURE",
+                                                   measure,
                                                    hover = "mytext",
                                                    yaxislabel = "Percentage of births (%)"){
   
-  y_max <- max(plotdata$MEASURE) # allows a margin to be set around y-axis
+  y_max <- max(plotdata$measure) # allows a margin to be set around y-axis
   
   xaxis_plots <- orig_xaxis_plots
-  
-  #xaxis_plots[["showticklabels"]] <- if_else(plotdata$HBNAME %in% island_names, TRUE, FALSE)
-  
-  xaxis_plots[["dtick"]] <- case_when(plotdata$PERIOD == "Q" ~ "3",
+
+  xaxis_plots[["dtick"]] <- case_when(plotdata$period == "Q" ~ "3",
                                       TRUE ~ "M6") # frequency of tick marks on x-axis
 
-  #xaxis_plots[["tickangle"]] <- -45
-  
   yaxis_plots <- orig_yaxis_plots
   yaxis_plots[["range"]] <- list(0, y_max * 1.05) # expands the y-axis range to prevent cut-offs
+  # yaxis_plots[["title"]] <- list(
+  #   standoff = 30) # distance between axis title and tick labels
   
-  # annotations
-  a <- list( # this annotation is used on the BOOKINGS small multiples to highlight 10 weeks
-    x = max(plotdata$DATE), 
+  # annotations - plots a single blue dot at 10 weeks on last data point for
+  # AVERAGE GESTATION AT BOOKING only
+  
+  a <- list(
+    x = max(plotdata$date), 
     y = 10,
     xanchor = 'left',
     yanchor = 'middle',
@@ -289,16 +327,16 @@ creates_overview_charts_without_median <- function(plotdata,
     showarrow = FALSE
   )
   
-  if(first(plotdata$INDICATOR) == "GESTATION AT BOOKING"){ # adds annotation at 10 weeks
+  if(first(plotdata$indicator) == "GESTATION AT BOOKING"){ # adds annotation at 10 weeks
     
     overview <- plotdata %>%
-      split(.$HBNAME2) %>% 
+      split(.$hbname2) %>% 
       lapply(
         function(d)
           plot_ly(
             d,
-            x = ~ DATE,
-            y = ~ get(measure),
+            x = ~ date,
+            y = ~ measure,
             type = "scatter",
             mode = "lines+markers",
             line = list(color = "black", # black lines
@@ -309,7 +347,7 @@ creates_overview_charts_without_median <- function(plotdata,
             hoverinfo = "text"
           ) %>%
           add_trace(
-            x = ~ max(plotdata$DATE),
+            x = ~ max(plotdata$date),
             y = 10,
             type = 'scatter',
             mode = "lines+markers",
@@ -321,14 +359,14 @@ creates_overview_charts_without_median <- function(plotdata,
         %>% 
           layout(annotations = a) %>%
           layout(
-            #font = list(size = 12),
+            font = plotly_global_font,
             xaxis = xaxis_plots,
             yaxis = yaxis_plots,
             showlegend = FALSE,
             annotations = list(
               x = 0.5,
               y = 1.0,
-              text = ~ unique(HBNAME2),
+              text = ~ unique(hbname2),
               xref = "paper",
               yref = "paper",
               xanchor = "center",
@@ -340,13 +378,13 @@ creates_overview_charts_without_median <- function(plotdata,
   } else {
     
     overview <- plotdata %>% 
-      split(.$HBNAME2) %>% 
+      split(.$hbname2) %>% 
       lapply(
         function(d)
           plot_ly(
             d,
-            x = ~ DATE,
-            y = ~ get(measure),
+            x = ~ date,
+            y = ~ measure,
             type = "scatter",
             mode = "lines+markers",
             line = list(color = "black", # black lines
@@ -357,14 +395,14 @@ creates_overview_charts_without_median <- function(plotdata,
             hoverinfo = "text"
           ) %>%
           layout(
-            #font = list(size = 12),
+            font = plotly_global_font,
             xaxis = xaxis_plots,
             yaxis = yaxis_plots,
             showlegend = FALSE,
             annotations = list(
               x = 0.5,
               y = 1.0,
-              text = ~ unique(HBNAME2),
+              text = ~ unique(hbname2),
               xref = "paper",
               yref = "paper",
               xanchor = "center",
@@ -380,59 +418,84 @@ creates_overview_charts_without_median <- function(plotdata,
             heights = c(0.15, 0.2, 0.2, 0.2, 0.18),
             margin = c(0.01, 0.01, 0.05, 0.02), 
             shareX = TRUE,
-            shareY = TRUE) %>% 
+            shareY = TRUE) %>%
     layout(
       annotations = list(
+        text = ~ case_match(
+          first(plotdata$indicator),
+          "TEARS" ~ "Percentage of women (%)",
+          c("GESTATION AT BIRTH", "APGAR5") ~ "Percentage of babies (%)",
+          .default = yaxislabel
+          ),
+        font = list(size = 14),
         x = 0,
         y = 0.5,
-        text = ~ if_else(first(plotdata$INDICATOR) == "TEARS", 
-                         "Percentage of women (%)", yaxislabel),
-        xshift = -50,
+        #standoff = 30, # distance between axis title and tick labels
+        xshift = -60,
         textangle = 270,
         showarrow = FALSE,
         xref = "paper",
         yref = "paper"
       )
-    ) %>% 
+    ) %>%
     config(displaylogo = F, displayModeBar = FALSE)
   
   return(overview)
 }
 
+# Function to create the runcharts/timeseries charts
+# Parameters:
+# plotdata: dataframe with data to be plotted
+# measure: variable to be plotted as black dots/lines
+# hover: hovertext for the measure
+# centreline: variable to be plotted as a solid blue line
+# dottedline: variable to be plotted as a dotted blue line
+# trend: green squares for 5 or more points going up or going down
+# shift: orange circles for 6 or more points above or below the median
+# yaxislabel: text to appear on y axis
+
 creates_runcharts <- function(plotdata,
-                              measure = "MEASURE",
+                              measure,
                               hover = "mytext",
-                              centreline = "MEDIAN",
-                              dottedline = "EXTENDED",
-                              trend = "orig_trend",
-                              shift = "orig_shift",
+                              centreline = "median",
+                              dottedline = "extended",
+                              #trend = "orig_trend",
+                              #shift = "orig_shift",
                               yaxislabel = "Percentage of births (%)"){
   
-  y_max <- max(plotdata$MEASURE, na.rm = TRUE) # allows a margin to be set around y-axis
+  y_max <- max(plotdata$measure, na.rm = TRUE) # allows a margin to be set around y-axis
+  
+  # temp fix
+  
+  # plotdata <-  
+  #   plotdata %>% 
+  #   mutate(shift = if_else(orig_shift == TRUE, measure, NA),
+  #          trend = if_else(orig_trend == TRUE, measure, NA)
+  #   )
   
   # include_legend = TRUE for ONE of multiple runcharts (otherwise the legends get repeated) 
   # need to see if a different method can utilise the subgroup function (will need to reformat the
   # dataframe fed into plotly)
 
   include_legend <- case_when(
-    first(plotdata$INDICATOR) == "TYPE OF BIRTH" &
-      first(plotdata$INDICATOR_CAT) != "spontaneous vaginal births" ~ FALSE,
-    first(plotdata$INDICATOR) == "GESTATION AT BIRTH" &
-      first(plotdata$INDICATOR_CAT) != ">= 32 and <= 36 weeks" ~ FALSE,
+    first(plotdata$indicator) == "TYPE OF BIRTH" &
+      first(plotdata$indicator_cat) != "spontaneous vaginal births" ~ FALSE,
+    first(plotdata$indicator) == "GESTATION AT BIRTH" &
+      first(plotdata$indicator_cat) != "between 32 and 36 weeks" ~ FALSE,
     TRUE ~ TRUE)
   
   # include_trend_shift_legend = TRUE ensures that the shift and trend legends appear even when the 
   # chart "linked" to the legend doesn't have any shifts or trends 
   
   include_trend_shift_legend <- case_when(
-    first(plotdata$INDICATOR_CAT) == "spontaneous vaginal births" ~ FALSE,
-          first(plotdata$INDICATOR_CAT) == ">= 32 and <= 36 weeks" ~ FALSE,
+    first(plotdata$indicator_cat) == "spontaneous vaginal births" ~ FALSE,
+          first(plotdata$indicator_cat) == "between 32 and 36 weeks" ~ FALSE,
     TRUE ~ include_legend)
   
   # ensures ticks and tick labels correspond (different for ABC, TERMINATIONS, SMR02)
   
    select_date_tickvals <- switch( # tells plotly where ticks will show
-   first(plotdata$INDICATOR), 
+   first(plotdata$indicator), 
    "BOOKINGS" = bookings_date_tickvals,
    "GESTATION AT BOOKING" = bookings_date_tickvals,
    "TERMINATIONS" = terminations_date_tickvals,
@@ -445,7 +508,7 @@ creates_runcharts <- function(plotdata,
    ) 
   
   select_date_ticktext <- switch( # telss plotly what text to show on ticks
-   first(plotdata$INDICATOR), 
+   first(plotdata$indicator), 
    "BOOKINGS" = bookings_date_ticktext,
    "GESTATION AT BOOKING" = bookings_date_ticktext,
    "TERMINATIONS" = terminations_date_ticktext,
@@ -463,41 +526,73 @@ creates_runcharts <- function(plotdata,
   xaxis_plots[["ticktext"]] <- select_date_ticktext
 
   yaxis_plots <- orig_yaxis_plots
+  yaxis_plots[["title"]] <- list(
+    text = ~ case_match(
+      first(plotdata$indicator),
+      "TEARS" ~ "Percentage of women (%)",
+      c("GESTATION AT BIRTH", "APGAR5") ~ "Percentage of babies (%)",
+      .default = yaxislabel
+      ),
+    standoff = 30) # distance between axis and chart
+  yaxis_plots[["tickformat"]] <- 
+    if_else(first(plotdata$indicator) %in% c("APGAR5", "TEARS"),
+            ".1f",
+            ",d")
   yaxis_plots[["range"]] <- list(0, y_max * 1.05) # expands the y-axis range to prevent cut-offs
   
-runcharts <-
+  runcharts <-
     plot_ly(
-      data = plotdata,
-      x = ~ DATE,
-      y = ~ get(measure),
-      type = "scatter",
+    data = plotdata,
+    x = ~ date,
+    y = ~ trend, # green trend line needs to be plotted first or it obliterates the others
+    type = "scatter",
+    mode = "lines",
+    line = list(
+      color = "lightgreen",
+      width = 10
+    ),
+    name = orig_trend_label,
+    legendgroup = "trend",
+    legendrank = 1003,
+    showlegend = ~ include_trend_shift_legend,
+    hovertext = "",
+    hoverinfo = "none"
+  ) %>% 
+    add_trace(
+      y = ~ measure,
       mode = "lines+markers",
-      line = list(color = "black", # black dots
-                  width = 1),
-      marker = list(color = "black", # black lines
-                    size = 5),
-      name = ~ if_else(first(plotdata$INDICATOR) %in% c("TYPE OF BIRTH", "GESTATION AT BIRTH"),
-                     "percentage of births (%)",
-                     str_to_lower(var_label(get(measure)))),
-      #legendgroup = "measure"
-      #legendrank = 100,
+      line = list(
+        color = "black", # black lines
+        width = 1),
+      marker = list(
+        color = "black", # black dots
+        size = 5),
+      name = ~ case_match(
+        first(plotdata$indicator),
+        "TYPE OF BIRTH" ~ "percentage of births (%)",
+        "GESTATION AT BIRTH" ~ "percentage of babies (%)",
+        .default = str_to_lower(var_label(measure))
+        ),
+      legendgroup = "measure",
+      legendrank = 100,
       showlegend = include_legend,
-      hovertext = ~ get(hover),
+      hovertext = ~ mytext,
       hoverinfo = "text"
-      # height = plot_height
-    ) %>%
+    ) %>% 
     add_trace(
       y = ~ get(centreline), # solid blue line
       type = "scatter",
       mode = "lines",
-      line = list(color = phs_colours("phs-blue"),
-                  width = 1),
+      line = list(
+        color = phs_colours("phs-blue"),
+        width = 1),
       marker = NULL,
       name = ~ paste0(var_label(get(centreline))), # retrieves label of variable
-      #legendgroup = "median"
-      #legendrank = 200,
+      legendgroup = "median",
+      legendrank = 200,
       showlegend = ~ include_legend,
-      hovertext = ""
+      hovertext = "",
+      hoverinfo = "none"
     ) %>%
     add_trace(
       y = ~ get(dottedline), # dotted blue line
@@ -510,58 +605,37 @@ runcharts <-
       ),
       marker = NULL,
       name = ~ paste0(var_label(get(dottedline))), # retrieves label of variable
-      #legendgroup = "extended"
-      #legendrank = 300, 
+      legendgroup = "extended",
+      legendrank = 300,
       showlegend = ~ include_legend,
-      hovertext = ""
+      hovertext = "",
+      hoverinfo = "none"
     ) %>%
-    add_trace(
-      data = plotdata %>% filter_at(trend,
-                                    all_vars(. == TRUE)), # green squares
-      mode = "markers",
-      marker = list(
-        color = "green",
-        size = 7.5,
-        symbol = "square"
-      ),
-      name = orig_trend_label,
-      legendgroup = "trend", 
-      legendrank = 1003,
-      showlegend = ~ include_trend_shift_legend,
-      line = NULL,
-      hovertext = ""
-    ) %>%
-    add_trace(
-      data = plotdata %>% filter_at(shift,
-                                    all_vars(. == TRUE)), # orange circles
-      mode = "markers",
-      marker = list(
-        color = "orange",
-        size = 6.5,
-        symbol = "circle"
-      ),
+      add_trace(
+      y = ~ shift, # orange lines
+      mode = "lines",
+      line = list(
+        color = "orange", # orange lines (prevents missing data warning)
+        width = 2),
+      marker = NULL,
+      # marker = list(
+      #   color = "orange", # orange dots
+      #   size = 6,
+      #   symbol = "circle"
+      # ),
       name = orig_shift_label,
-      legendgroup = "shift", 
+      legendgroup = "shift",
       legendrank = 1004,
       showlegend = ~ include_trend_shift_legend,
-      line = NULL,
-      hovertext = ""
+      hovertext = "",
+      hoverinfo = "none"
     ) %>%
     layout(
-      annotations = list(
-        x = 0,
-        y = 0.5,
-        text = ~ if_else(first(plotdata$INDICATOR) == "TEARS", 
-                               "Percentage of women (%)", yaxislabel),
-        xshift = -50,
-        textangle = 270,
-        showarrow = FALSE,
-        xref = "paper",
-        yref = "paper"
-        ),
+      font = plotly_global_font,
       xaxis = xaxis_plots,
       yaxis = yaxis_plots,
-      legend = list(title = list(text = paste0(plotdata$HBNAME, "<br>")),
+      legend = list(title = list(text = paste0(plotdata$hbname, "<br>")),
+                    tracegroupgap = 15,
                     orientation = "v",
                     x = 1.0,
                     y = 0.5,
@@ -569,61 +643,67 @@ runcharts <-
                     yref = "paper",
                     xanchor = "left",
                     itemclick = FALSE)
-                    # groupclick = "togglegroup") 
-    ) %>% 
+    ) %>%
+    #config(modeBarButtons = list(list("zoomIn2d"), list("zoomOut2d"), list("pan3d")))
     config(displaylogo = F, displayModeBar = FALSE)
 
 # adds "dummy" traces for multiple runcharts to force shift and trend legends to appear even if there
 # are none in these charts
-  
-if(first(plotdata$INDICATOR_CAT) %in% c("spontaneous vaginal births",
-                                        ">= 32 and <= 36 weeks")) {
+
+if(first(plotdata$indicator_cat) %in% c("spontaneous vaginal births",
+                                        "between 32 and 36 weeks")) {
   runcharts <- runcharts %>%
     add_trace(
     data = plotdata,
-    x = ~ min(DATE), # fake trend to show legend even when no trend exists on chart
+    x = ~ min(date), # fake trend to show legend even when no trend exists on chart
     y = ~ -5,
-    mode = "markers",
-    marker = list(
-      color = "green",
-      size = 7.5,
-      symbol = "square"
+    mode = "lines",
+    line = list(
+      color = "lightgreen",
+      width = 10
     ),
+    #marker = NULL,
     name = orig_trend_label, # retrieves label of variable
-    legendgroup = "trend", 
-    #legendrank = 600,
+    legendgroup = "trend",
+    legendrank = 600,
     showlegend = TRUE,
-    line = NULL,
-    hovertext = ""
+    #line = NULL,
+    hovertext = "",
+    hoverinfo = "none"
     ) %>%
     add_trace(
       data = plotdata,
-      x = ~ max(DATE), # fake shift to show legend even when no trend exists on chart
+      x = ~ max(date), # fake shift to show legend even when no shift exists on chart
       y = ~ -5,
-      mode = "markers",
-      marker = list(
-        color = "orange",
-        size = 6.5,
-        symbol = "circle"
-      ),
+      mode = "lines",
+      marker = NULL,
+      line = list(
+        color = "orange", # orange lines (prevents missing data warning)
+        width = 2),
+      # marker = list(
+      #   color = "orange", # orange dots
+      #   size = 6,
+      #   symbol = "circle"
+      # ),
       name = orig_shift_label, # retrieves label of variable
-      legendgroup = "shift", 
-      #legendrank = 700,
+      legendgroup = "shift",
+      legendrank = 700,
       showlegend = TRUE,
-      line = NULL,
-      hovertext = ""
+      #line = NULL,
+      hovertext = "",
+      hoverinfo = "none"
     )
 }
 
 # additional traces for the "special" Boards in GESTATION AT BOOKING indicator
-  
-  if(first(plotdata$INDICATOR) == "GESTATION AT BOOKING" & 
-     first(plotdata$HBNAME) %in% c("NHS Forth Valley", "NHS Tayside")) {
-    
+
+  if(first(plotdata$indicator) == "GESTATION AT BOOKING" &
+     first(plotdata$hbname) %in% c("NHS Forth Valley", "NHS Tayside")) {
+
     runcharts <- runcharts %>%
       add_trace(
-        data = filter(plotdata,!is.na(NEW_MEDIAN)),
-        y = ~ NEW_MEDIAN, # green line 
+        data = filter(plotdata,!is.na(new_median)),
+        y = ~ new_median, # green line
         type = "scatter",
         mode = "lines",
         line = list(
@@ -632,9 +712,9 @@ if(first(plotdata$INDICATOR_CAT) %in% c("spontaneous vaginal births",
         ),
         marker = NULL,
         name = ~ case_when(
-          HBNAME == "NHS Forth Valley" ~
+          hbname == "NHS Forth Valley" ~
             paste0("average gestation from Mar 2021", "<br>", "to end Feb 2022"),
-          HBNAME == "NHS Tayside" ~
+          hbname == "NHS Tayside" ~
             paste0("average gestation from Aug 2020", "<br>", "to end Jul 2021"),
           TRUE ~ ""
         ),
@@ -643,8 +723,8 @@ if(first(plotdata$INDICATOR_CAT) %in% c("spontaneous vaginal births",
         hovertext = ""
       ) %>%
       add_trace(
-        data = filter(plotdata,!is.na(NEW_EXTENDED)),
-        y = ~ NEW_EXTENDED, # dotted green line 
+        data = filter(plotdata,!is.na(new_extended)),
+        y = ~ new_extended, # dotted green line
         type = "scatter",
         mode = "lines",
         line = list(
@@ -654,8 +734,8 @@ if(first(plotdata$INDICATOR_CAT) %in% c("spontaneous vaginal births",
         ),
         marker = NULL,
         name = ~ paste0(case_when(
-          HBNAME == "NHS Forth Valley" ~ "projected average gestation from Mar 2022",
-          HBNAME == "NHS Tayside" ~ "projected average gestation from Aug 2021",
+          hbname == "NHS Forth Valley" ~ "projected average gestation from Mar 2022",
+          hbname == "NHS Tayside" ~ "projected average gestation from Aug 2021",
           TRUE ~ ""
         )
         ),
@@ -664,10 +744,154 @@ if(first(plotdata$INDICATOR_CAT) %in% c("spontaneous vaginal births",
         hovertext = ""
       )
   }
-#}
-  
+
   return(runcharts)
 }
+
+# Function to create the context charts (overall numbers relevant to the indicator)
+# Parameters:
+# plotdata: dataframe with data to be plotted
+# date: name of the "date" variable (may be "QUARTER" rather than "date")
+# num: main indicator variable to be plotted as line (e.g. number of Apgar5 scores < 7)
+# num_hover: hovertext for the num
+# den: "total" indicator variable to be plotted as a line (e.g. the total number of Apgar5 scores recorded)
+# den_hover: hovertext for the den
+# yaxislabel: text to appear on y axis
+
+creates_context_charts <- function(plotdata,
+                                   date,
+                                   num,
+                                   num_hover = "mytext1",
+                                   den,
+                                   den_hover = "mytext2",
+                                   yaxislabel = "Number of births"){
+  
+  y_max <- max(plotdata$den, na.rm = TRUE) # allows a margin to be set around y-axis
+  
+  # include_legend = TRUE for ONE of multiple runcharts (otherwise the legends get repeated) 
+  # need to see if a different method can utilise the subgroup function (will need to reformat the
+  # dataframe fed into plotly)
+
+  include_legend <- case_when(
+    first(plotdata$indicator) == "TYPE OF BIRTH" &
+      first(plotdata$indicator_cat) != "spontaneous vaginal births" ~ FALSE,
+    first(plotdata$indicator) == "GESTATION AT BIRTH" &
+      first(plotdata$indicator_cat) != ">= 32 and <= 36 weeks" ~ FALSE,
+    TRUE ~ TRUE)
+  
+  # ensures ticks and tick labels correspond (different for ABC, TERMINATIONS, SMR02)
+  
+   select_date_tickvals <- switch( # tells plotly where ticks will show
+   first(plotdata$indicator), 
+   "BOOKINGS" = bookings_date_tickvals,
+   "GESTATION AT BOOKING" = bookings_date_tickvals,
+   "TERMINATIONS" = terminations_date_tickvals,
+   "GESTATION AT TERMINATION" = terminations_date_tickvals,
+   "EXTREMELY PRE-TERM BIRTHS" = SMR02_date_tickvals,
+   "INDUCTIONS" = SMR02_date_tickvals,
+   "TYPE OF BIRTH" = SMR02_multiples_date_tickvals,
+   "TEARS" = SMR02_date_tickvals,
+   "GESTATION AT BIRTH" = SMR02_multiples_date_tickvals,
+   "APGAR5" = SMR02_date_tickvals
+   ) 
+  
+  select_date_ticktext <- switch( # tells plotly what text to show on ticks
+   first(plotdata$indicator), 
+   "BOOKINGS" = bookings_date_ticktext,
+   "GESTATION AT BOOKING" = bookings_date_ticktext,
+   "TERMINATIONS" = terminations_date_ticktext,
+   "GESTATION AT TERMINATION" = terminations_date_ticktext,
+   "EXTREMELY PRE-TERM BIRTHS" = SMR02_date_ticktext,
+   "INDUCTIONS" = SMR02_date_ticktext,
+   "TYPE OF BIRTH" = SMR02_multiples_date_ticktext,
+   "TEARS" = SMR02_date_ticktext,
+   "GESTATION AT BIRTH" = SMR02_multiples_date_ticktext,
+   "APGAR5" = SMR02_date_ticktext
+   )
+
+  xaxis_plots <- orig_xaxis_plots
+  xaxis_plots[["tickmode"]] <- "array"
+  xaxis_plots[["tickvals"]] <- select_date_tickvals
+  xaxis_plots[["ticktext"]] <- select_date_ticktext
+
+  yaxis_plots <- orig_yaxis_plots
+  yaxis_plots[["range"]] <- list(0, y_max * 1.05) # expands the y-axis range to prevent cut-offs
+  yaxis_plots[["title"]] <- list(
+    text = ~ case_match(
+      first(plotdata$indicator),
+      "TEARS" ~ "Number of women",
+      "APGAR5" ~ "Number of babies",
+      .default = yaxislabel
+      ),
+    standoff = 30) # distance between axis and chart
+
+context_charts <-
+    plot_ly(
+      data = plotdata,
+      x = ~ date,
+      y = ~ num,
+      type = "scatter",
+      mode = "lines+markers",
+      line = list(color = selected_colours[2], # magenta line with x
+                  width = 2),
+      marker = list(color = selected_colours[2],
+                    symbol = "square-x-open"),
+      name = ~ case_match( # retrieves label of variable
+        first(plotdata$indicator),
+        c("TYPE OF BIRTH", "GESTATION AT BIRTH") ~ "number of births",
+        "APGAR5" ~ "babies with an Apgar5 score less than 7",
+        "EXTREMELY PRE-TERM BIRTHS" ~ "births at 22-26 weeks in a hospital with a NICU",
+      .default = str_to_lower(var_label(num))
+      ),
+      #legendgroup = "measure"
+      legendrank = 200,
+      showlegend = include_legend,
+      hovertext = ~ get(num_hover),
+      hoverinfo = "text"
+    ) %>%
+    add_trace(
+      y = ~ den, # dashed purple line
+      type = "scatter",
+      mode = "lines+markers",
+      line = list(color = selected_colours[1],
+                  width = 2),
+      marker = list(color = selected_colours[1],
+                    symbol = "circle"),
+      name = ~ case_match( # retrieves label of variable
+        first(plotdata$indicator),
+        "APGAR5" ~ "babies with a known Apgar5 score",
+        .default = str_to_lower(var_label(den))
+        ), 
+      #legendgroup = "median"
+      legendrank = 100,
+      showlegend = ~ include_legend,
+      hovertext = ~ get(den_hover),
+      hovertext = "text"
+    ) %>%
+    layout(
+      font = plotly_global_font,
+      xaxis = xaxis_plots,
+      yaxis = yaxis_plots,
+      legend = list(
+        title = list(text = paste0(plotdata$hbname, "<br>")),
+        orientation = "v",
+        x = 1.0,
+        y = 0.5,
+        xref = "paper",
+        yref = "paper",
+        xanchor = "left",
+        itemclick = FALSE),
+        # groupclick = "togglegroup") 
+      margin = list(pad = 30) # distance between axis and first data point
+    ) %>% 
+    config(displaylogo = F, displayModeBar = FALSE)
+
+  return(context_charts)
+}
+
+# Function to build download data
+# Parameter: 
+# indicator: dataframe to be downloaded
 
 builds_download_data <- function(indicator) {
   
